@@ -6,7 +6,8 @@
   "scripts": {
     "start": "nodemon ./src/server.js",
     "lint": "eslint ./src",
-    "migrate": "node-pg-migrate"
+    "migrate": "node-pg-migrate",
+    "reset-db": "npm run migrate down 10 && npm run migrate up"
   },
   "keywords": [],
   "author": "",

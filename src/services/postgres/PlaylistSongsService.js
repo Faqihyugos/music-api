@@ -5,9 +5,9 @@ const NotFoundError = require('../../exceptions/NotFoundError');
 const AuthorizationError = require('../../exceptions/AuthorizationError');
 
 class PlaylistSongsService {
-  constructor(collaborationService) {
+  constructor(cacheService) {
     this._pool = new Pool();
-    this._collaborationService = collaborationService;
+    this._cacheService = cacheService;
   }
 
   async addSongToPlaylist({ playlistId, songId }) {
@@ -18,20 +18,30 @@ class PlaylistSongsService {
     };
 
     const result = await this._pool.query(query);
-    if (!result.rows[0].id) {
+    if (!result.rowCount) {
       throw new InvariantError('Lagu gagal ditambahkan');
     }
+    await this._cacheService.delete(`playlistsong-${playlistId}`);
     return result.rows[0].id;
   }
 
   async getPlaylistsSong(playlistId) {
-    const query = {
-      text: `SELECT playlistsongs.id, songs.title, songs.performer FROM playlistsongs JOIN 
+    try {
+      // mendapatkan catatan dari cache
+      const result = await this._cacheService.get(`playlistsong-${playlistId}`);
+      return JSON.parse(result);
+    } catch (error) {
+      // jika di cache tidak ada maka diambil dari database
+      const query = {
+        text: `SELECT playlistsongs.id, songs.title, songs.performer FROM playlistsongs JOIN 
             songs on playlistsongs.song_id=songs.id WHERE playlistsongs.playlist_id = $1`,
-      values: [playlistId],
-    };
-    const result = await this._pool.query(query);
-    return result.rows;
+        values: [playlistId],
+      };
+      const result = await this._pool.query(query);
+      // Lagu akan disimpan pada cache sebelum fungsi SongsFromPlaylist dikembalikan
+      await this._cacheService.set(`playlistsong-${playlistId}`, JSON.stringify(result.rows));
+      return result.rows;
+    }
   }
 
   async deleteSongPlaylists(playlistId, songId) {
@@ -43,6 +53,7 @@ class PlaylistSongsService {
     if (!result.rowCount) {
       throw new InvariantError(' Lagu gagal dihapus');
     }
+    await this._cacheService.delete(`playlistsong-${playlistId}`);
   }
 
   async verifyPlaylistSongOwner(playlistId, owner) {
